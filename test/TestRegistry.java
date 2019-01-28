@@ -20,38 +20,7 @@ public class TestRegistry {
     assertEquals(true, true);
   }
 
-  @Test
-  public void testIsNodeRegistered() {
-    registry = new Registry();
-    for (int i = 1; i < 9; i++) {
-      registry.nodeList.add(new Node(i));
-    }
 
-    for (int i = 1; i < 9; i++) {
-      assertEquals(true, registry.isNodeRegistered(i));
-    }
-  }
-
-  @Test
-  public void testIsNodeNotRegistered() {
-    registry = new Registry();
-    for (int i = 1; i < 9; i++) {
-      registry.nodeList.add(new Node(i));
-    }
-
-    assertFalse(registry.isNodeRegistered(0));
-  }
-
-  @Test
-  public void testDeregisterNode() {
-    registry = new Registry();
-    for (int i = 1; i < 9; i++) {
-      registry.nodeList.add(new Node(i));
-    }
-
-    registry.deregisterMessagingNode(3);
-    assertFalse(registry.nodeList.contains(new Node(3)));
-  }
 
 
 }

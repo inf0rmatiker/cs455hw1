@@ -2,31 +2,45 @@ package main.java.cs455.overlay.node;
 
 import java.io.*;
 import java.net.*;
+import main.java.cs455.overlay.transport.TCPServerThread;
 
-public class MessagingNode {
+public class MessagingNode implements Node {
 
-  public static final int REGISTRY_PORT = 5003; // HARDCODED
+  public int REGISTRY_PORT;
+  public String REGISTRY_HOST;
+  public TCPServerThread messagingServer;
 
+  // Default ctor incase registry host and port were not specified
   public MessagingNode() {
+    this("denver", 5000);
+  }
+
+  // Overloaded ctor made from args[]
+  public MessagingNode(String registryHost, int registryPort) {
+    this.REGISTRY_HOST = registryHost;
+    this.REGISTRY_PORT = registryPort;
+
+    this.messagingServer = new TCPServerThread();
+    this.startServerThread();
+  }
+
+  // Starts TCPServerThread's run() method
+  public void startServerThread() {
+    Thread serverThread = new Thread(this.messagingServer);
+    serverThread.start();
+  }
+
+  @Override
+  public void onEvent() {
 
   }
 
   public static void main(String[] args) throws IOException {
-    Socket connection = new Socket("pierre", REGISTRY_PORT);
+    MessagingNode messagingNode = new MessagingNode(args[0], Integer.parseInt(args[1]));
 
-    InputStream inputStream = connection.getInputStream();
-    OutputStream outputStream = connection.getOutputStream();
+    // Testing send data '24' to Registry node
+    messagingNode.messagingServer.sendData(messagingNode.REGISTRY_PORT,
+        messagingNode.REGISTRY_HOST, messagingNode.messagingServer.port);
 
-    DataInputStream dataInputStream = new DataInputStream(inputStream);
-    DataOutputStream dataOutputStream = new DataOutputStream(outputStream);
-
-    dataOutputStream.writeInt(3);
-    //System.out.printf("Message of length %d received on port %d.\n", messageLength, REGISTRY_PORT);
-
-    dataInputStream.close();
-    dataOutputStream.close();
-    inputStream.close();
-    outputStream.close();
-    connection.close();
   }
 }

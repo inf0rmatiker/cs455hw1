@@ -3,92 +3,46 @@ package main.java.cs455.overlay.node;
 import java.util.ArrayList;
 import java.io.*;
 import java.net.*;
+import main.java.cs455.overlay.transport.*;
 
-public class Registry {
+public class Registry implements Node {
 
-  public final int REGISTRY_PORT = 5003;
-  public final int nodeCapacity;
+  public final int REGISTRY_PORT;
+  public TCPServerThread registryServer;
 
-  public ArrayList<Node> nodeList;
-  public ServerSocket serverSocket;
-  public DataOutputStream dataOutputStream;
-  public DataInputStream dataInputStream;
-  public Socket socket;
-
-  public Registry() {
-    this.nodeCapacity = 3;
-    this.nodeList = new ArrayList<Node>();
+  public Registry(int portNumber) {
+    // Assign port number from args.
+    this.REGISTRY_PORT = portNumber;
+    this.registryServer = new TCPServerThread(5003);
+    this.startServerThread();
   }
 
-  public void createServerSocket (int nodeCapacity) throws IOException  {
-    this.serverSocket = new ServerSocket(REGISTRY_PORT, nodeCapacity);
+  // Starts TCPServerThread's run() method
+  public void startServerThread() {
+    Thread serverThread = new Thread(this.registryServer);
+    serverThread.start();
   }
 
-  public void registerMessagingNode(int nodeId) {
-    if (!isNodeRegistered(nodeId)) {
-      this.nodeList.add(new Node(nodeId));
-      System.out.printf("Node %d has been registered!\n", nodeId);
-    }
-    else deregisterMessagingNode(nodeId);
-  }
+  public void registerMessagingNode(int nodeId) {}
 
-  public void deregisterMessagingNode(int nodeId) throws IllegalStateException {
-    if (!isNodeRegistered(nodeId)) {
-      throw new IllegalStateException("Unregistered node " + nodeId + " cannot be deregistered!");
-    }
-    for (int i = 0; i < this.nodeList.size(); i++) {
-      if (this.nodeList.get(i).getId() == nodeId) {
-        this.nodeList.remove(i);
-        break;
-      }
-    }
-    System.out.printf("Node %d has been deregistered!\n", nodeId);
-  }
+  public void deregisterMessagingNode(int nodeId) throws IllegalStateException {}
 
   public boolean isNodeRegistered(int nodeId) {
-    for (Node n: this.nodeList) {
-      if (n.getId() == nodeId) {
-        return true;
-      }
-    }
     return false;
   }
 
+  @Override
+  public void onEvent() {}
+
   public String toString() {
-    String result = "";
-    for (Node registeredNode: this.nodeList) {
-      result += registeredNode;
-    }
-    return result;
+    return String.format("Registry live on port: %d", this.REGISTRY_PORT);
   }
 
   public static void main(String[] args) throws IOException {
 
-    Registry registry = new Registry();
-    registry.createServerSocket(registry.nodeCapacity);
-
-    while (true) {
-      System.out.printf("Now listening on port # %d", registry.REGISTRY_PORT);
-      registry.socket = registry.serverSocket.accept();
-      registry.dataInputStream = new DataInputStream(registry.socket.getInputStream());
-      registry.dataOutputStream = new DataOutputStream(registry.socket.getOutputStream());
-
-      int nodeId = registry.dataInputStream.readInt();
-      System.out.printf("Registry received nodeId: %d\n", nodeId);
-
-      if (registry.nodeList.size() >= registry.nodeCapacity) {
-        break;
-      }
-      else {
-        registry.registerMessagingNode(nodeId);
-      }
-    }
-
+    // Create the registry from the port specified by command-line arg.
+    Registry registry = new Registry(Integer.parseInt(args[0]));
     System.out.println(registry);
-
-
-
-
 
   }
 
