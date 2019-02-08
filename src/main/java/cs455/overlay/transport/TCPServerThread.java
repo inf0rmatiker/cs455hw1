@@ -2,24 +2,28 @@ package main.java.cs455.overlay.transport;
 
 import java.io.*;
 import java.net.*;
+import main.java.cs455.overlay.node.Node;
+import main.java.cs455.overlay.node.Registry;
 
 public class TCPServerThread implements Runnable {
 
   public ServerSocket serverSocket;
-  public TCPSender sender;
+  public Socket currentSocket;
   public TCPReceiverThread receiver;
   public int port;
   public boolean isRegistry = true;
+  public Node node;
 
   // Default ctor for MessagingNodes which won't have a hardcoded port.
-  public TCPServerThread() {
-    this(0);
+  public TCPServerThread(Node node) {
+    this(node, 0);
   }
 
-  public TCPServerThread(int port) {
-    // If port comes in as 0, we are a MessagingNode.
-    this.isRegistry = port == 0 ? false : true;
+  public TCPServerThread(Node node, int port) {
+    this.node = node;
     this.port = port;
+    this.isRegistry = (node instanceof Registry);
+
     try {
       createServerSocket();
     } catch (IOException e) {
@@ -28,6 +32,13 @@ public class TCPServerThread implements Runnable {
   }
 
   // TODO: Remove testing statements
+  /**
+   * Creates a ServerSocket for a Node. If the requesting Node is a Registry, it binds the
+   * ServerSocket to the port specified from args[]. If it is a MessagingNode, it starts looking
+   * for an unbound port at 1024 and incrementing upwards.
+   *
+   * @throws IOException
+   */
   public void createServerSocket() throws IOException {
 
     // Create unbound server socket
@@ -57,23 +68,53 @@ public class TCPServerThread implements Runnable {
     }
   }
 
+  /**
+   * Spins up a TCPReceiverThread to listen for incoming data on
+   * its given Socket.
+   */
   public void startReceiverThread() {
     Thread receiverThread = new Thread(receiver);
     receiverThread.start();
   }
 
-  public void sendData(int port, String host, int dataLength) throws IOException {
-    this.sender = new TCPSender(new Socket(host, port));
-    this.sender.sendData(dataLength);
+  /**
+   * Establishes a new Socket and sends data to the recipient.
+   *
+   * @param port the port number of the recipient.
+   * @param host the hostname of the recipient.
+   * @param bytesToSend the raw data.
+   * @throws IOException
+   */
+  public void sendData(int port, String host, byte[] bytesToSend) throws IOException {
+    this.currentSocket = new Socket(host, port);
+    this.sendData(bytesToSend);
+  }
+
+  /**
+   * Sends a data across the socket that has already been established from the receiver.
+   */
+  public void sendData(byte[] bytesToSend) throws IOException {
+    TCPSender sender = new TCPSender(this.currentSocket);
+    sender.sendBytes(bytesToSend);
+  }
+
+  /**
+   * Assumes that data has just been sent, and currentSocket is set.
+   */
+  public void listenForResponse() throws IOException {
+    this.receiver = new TCPReceiverThread(this.node, this.currentSocket);
+    this.startReceiverThread();
   }
 
   @Override
   public void run() {
 
     while (true) {
-      // Create a receiver thread when we receive a connection.
       try {
-        this.receiver = new TCPReceiverThread(this.serverSocket.accept());
+        // Creates a receiver thread from the node instance and socket that gets made from
+        // the connection.
+        this.currentSocket = this.serverSocket.accept();
+        this.receiver = new TCPReceiverThread(this.node, this.currentSocket);
         this.startReceiverThread();
       } catch (IOException e) {
         System.err.println(e.getMessage());
