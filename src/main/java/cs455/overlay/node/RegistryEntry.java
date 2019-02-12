@@ -19,6 +19,15 @@ public class RegistryEntry {
     this.edges = new ArrayList<>();
   }
 
+  public String getEdgeConnections() {
+    String result = "";
+    for (GraphEdge ge: edges) {
+      result += String.format("Edge from index %d to index %d\n", ge.from, ge.to);
+    }
+
+    return result;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;

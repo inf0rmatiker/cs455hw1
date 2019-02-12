@@ -8,6 +8,7 @@ import java.net.*;
 import java.util.Scanner;
 import java.util.stream.Collectors;
 import main.java.cs455.overlay.transport.*;
+import main.java.cs455.overlay.util.OverlayCreator;
 import main.java.cs455.overlay.wireformats.Deregister;
 import main.java.cs455.overlay.wireformats.Event;
 import main.java.cs455.overlay.wireformats.EventFactory;
@@ -20,6 +21,7 @@ public class Registry implements Node {
   public String REGISTRY_IP;
   public TCPServerThread registryServer;
   public List<RegistryEntry> registryEntries;
+  public OverlayCreator overlayCreator;
 
   public Registry(int portNumber) throws IOException {
     this.registryEntries = new LinkedList<>();
@@ -40,8 +42,11 @@ public class Registry implements Node {
     serverThread.start();
   }
 
-  public void createOverlay() {
-
+  public void createOverlay(int numLinksPerNode) {
+    this.overlayCreator = new OverlayCreator(registryEntries, numLinksPerNode);
+    for (int i = 0; i < registryEntries.size(); i++) {
+      System.out.printf("Node at index %d has edges:\n%s\n", i, registryEntries.get(i).getEdgeConnections());
+    }
   }
 
   /**
@@ -78,12 +83,11 @@ public class Registry implements Node {
     this.registryServer.sendData(response.getBytes());
   }
 
-  public void deregisterMessagingNode(Event event) throws IOException  {
+  public synchronized void deregisterMessagingNode(Event event) throws IOException  {
     RegistryEntry request = new RegistryEntry(
         event.getPortNumber(), event.getHostName(), event.getIpAddress());
 
     RegistrationResponse response;
-    hostNamesMatch(request.hostName);
     // Verify that:
     // 1: The address of the request matches the origin address.
     // 2: The node is already registered.
@@ -185,7 +189,9 @@ public class Registry implements Node {
 
     switch (command) {
       case "exit": System.exit(0);
-      case "createOverlay": registry.createOverlay(); break;
+      case "createOverlay":
+        int numLinksPerNode = scan.nextInt();
+        registry.createOverlay(numLinksPerNode); break;
       default: break;
     }
 
