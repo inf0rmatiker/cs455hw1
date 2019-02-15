@@ -11,7 +11,6 @@ public class TCPSender {
   public TCPSender(Socket socket) throws IOException {
     this.socket = socket;
     this.dataOutputStream = new DataOutputStream(socket.getOutputStream());
-    System.out.println("Sending Connection Response to: " + socket.getInetAddress().getHostName());
   }
 
   public void sendBytes(byte[] bytesToSend) throws IOException {

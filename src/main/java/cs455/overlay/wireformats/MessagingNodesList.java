@@ -3,6 +3,7 @@ package main.java.cs455.overlay.wireformats;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import main.java.cs455.overlay.node.RegistryEntry;
 
 public class MessagingNodesList extends Protocol implements Event {
@@ -108,6 +109,15 @@ public class MessagingNodesList extends Protocol implements Event {
 
   public Protocol.EventType getType() {
     return EventType.MESSAGING_NODES_LIST;
+  }
+
+  @Override
+  public String toString() {
+    String result = "MessagingNodeList (Requested Connections):\n{\n\t";
+    result += String.join("\n\n\t", this.nodeList.stream().map(Object::toString).collect(
+        Collectors.toList()));
+    result += "}\n";
+    return result;
   }
 
 }

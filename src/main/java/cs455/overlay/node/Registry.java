@@ -44,8 +44,14 @@ public class Registry implements Node {
   public void createOverlay(int numLinksPerNode) throws IOException {
     this.overlayCreator = new OverlayCreator(registryEntries, numLinksPerNode);
     for (int i = 0; i < registryEntries.size(); i++) {
+
       //System.out.printf("Node at index %d has edges:\n%s\n", i, registryEntries.get(i).getEdgeConnections());
+
+      //System.out.printf("Index %d entry: %s\n",i, registryEntries.get(i));
       this.sendMessagingNodesList(i);
+      //System.out.printf("%s\n", String.join("\n", registryEntries.get(i).edges.stream().map(Object::toString).collect(
+          //Collectors.toList())));
+      //System.out.printf("Index %d socket: %s\n",i, registryEntries.get(i).socket.getInetAddress().getHostName());
     }
   }
 
@@ -56,21 +62,26 @@ public class Registry implements Node {
    */
   public void sendMessagingNodesList(int index) throws IOException {
     RegistryEntry fromNode = registryEntries.get(index);
+    System.out.printf("Index %d entry: %s\n",index, registryEntries.get(index));
     ArrayList<RegistryEntry> listOfToNodes = new ArrayList<>();
     //System.out.printf("From index: %d\n", index);
     for (GraphEdge ge: fromNode.edges) {
       // Only include nodes which have from coming out of it and to going to a different node
       if (ge.from == index) {
+
         RegistryEntry toNode = registryEntries.get(ge.to);
+        //System.out.printf("To index: %d, Node at toindex: %s\n", ge.to, toNode);
         listOfToNodes.add(toNode);
         //System.out.printf("To index: %d\n", ge.to);
         //System.out.printf("To Node: %s\n", toNode);
       }
     }
 
+
     MessagingNodesList messagingNodesList = new MessagingNodesList(REGISTRY_PORT,
         REGISTRY_HOSTNAME, REGISTRY_IP, listOfToNodes);
-
+    //System.out.printf("%s", messagingNodesList);
+    //System.out.printf("%s\n", fromNode.socket.getInetAddress().getHostName());
     this.registryServer.sendData(messagingNodesList.getBytes(), fromNode.socket);
   }
 
@@ -83,7 +94,7 @@ public class Registry implements Node {
    */
   public void registerMessagingNode(Event event, Socket socket) throws IOException {
     RegistryEntry request = new RegistryEntry(
-        event.getPortNumber(), event.getHostName(), event.getIpAddress(), this.registryServer.currentSocket);
+        event.getPortNumber(), event.getHostName(), event.getIpAddress(), socket);
 
     RegistrationResponse response;
     hostNamesMatch(request.hostName, socket);
@@ -105,12 +116,14 @@ public class Registry implements Node {
       System.err.printf("Failed to register Node on %s at port %d\n",
           request.hostName, request.portNumber);
     }
+
+    System.out.printf("Sending registration response to %s...\n\n", socket.getInetAddress().getHostName());
     this.registryServer.sendData(response.getBytes(), socket);
   }
 
   public synchronized void deregisterMessagingNode(Event event, Socket socket) throws IOException  {
     RegistryEntry request = new RegistryEntry(
-        event.getPortNumber(), event.getHostName(), event.getIpAddress(), this.registryServer.currentSocket);
+        event.getPortNumber(), event.getHostName(), event.getIpAddress(), socket);
 
     RegistrationResponse response;
     // Verify that:
@@ -136,6 +149,7 @@ public class Registry implements Node {
       System.err.printf("Failed to deregister Node on %s at port %d\n",
           request.hostName, request.portNumber);
     }
+
     this.registryServer.sendData(response.getBytes(), socket);
   }
 

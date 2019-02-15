@@ -99,6 +99,7 @@ public class MessagingNode implements Node {
    */
   public void connectToOtherMessagingNodes(MessagingNodesList nodeList) throws IOException {
     // Add all the nodes in the request list to our nodeList
+    System.out.printf(">> Received MessagingNodesList Request <<\n%s", nodeList);
     for (RegistryEntry re: nodeList.nodeList) {
       this.nodeList.add(re);
     }

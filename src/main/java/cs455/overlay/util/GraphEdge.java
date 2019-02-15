@@ -26,4 +26,9 @@ public class GraphEdge {
     if (this.from == other.to && this.to == other.from) return true;
     return false;
   }
+
+  @Override
+  public String toString() {
+    return String.format("Edge from index %d to index %d, with weight %d.\n", from, to, weight);
+  }
 }
