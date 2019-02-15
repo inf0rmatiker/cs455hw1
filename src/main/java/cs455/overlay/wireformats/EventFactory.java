@@ -1,6 +1,7 @@
 package main.java.cs455.overlay.wireformats;
 
 import java.io.*;
+import main.java.cs455.overlay.node.MessagingNode;
 
 public class EventFactory {
 
@@ -32,6 +33,9 @@ public class EventFactory {
       case REGISTER:   return createRegisterEvent(marshalledBytes);
       case DEREGISTER: return createDeregisterEvent(marshalledBytes);
       case REGISTRATION_RESPONSE: return createRegistrationResponse(marshalledBytes);
+      case MESSAGING_NODES_LIST: return createMessagingNodesListEvent(marshalledBytes);
+      case CONNECTION_REQUEST: return createConnectionRequest(marshalledBytes);
+      case CONNECTION_RESPONSE: return createConnectionResponse(marshalledBytes);
       default: return null;
     }
   }
@@ -46,6 +50,18 @@ public class EventFactory {
 
   public Deregister createDeregisterEvent(byte[] marshalledBytes) throws IOException {
     return new Deregister(marshalledBytes);
+  }
+
+  public MessagingNodesList createMessagingNodesListEvent(byte[] marshalledBytes) throws IOException {
+    return new MessagingNodesList(marshalledBytes);
+  }
+
+  public ConnectionRequest createConnectionRequest(byte[] marshalledBytes) throws IOException {
+    return new ConnectionRequest(marshalledBytes);
+  }
+
+  public ConnectionResponse createConnectionResponse(byte[] marshalledBytes) throws IOException {
+    return new ConnectionResponse(marshalledBytes);
   }
 
   /**

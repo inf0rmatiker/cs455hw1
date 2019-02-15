@@ -26,10 +26,7 @@ public class RegistrationResponse extends Protocol implements Event {
    */
   public RegistrationResponse(int portNumber, String hostName, String ipAddress,
       byte registrationTypeCode, byte statusCode, String description) throws IOException {
-    this.type = 2;
-    this.portNumber = portNumber;
-    this.hostName = hostName;
-    this.ipAddress = ipAddress;
+    super(2, portNumber, hostName, ipAddress);
     this.registrationTypeCode = registrationTypeCode;
     this.statusCode = statusCode;
     this.description = description;
@@ -43,8 +40,7 @@ public class RegistrationResponse extends Protocol implements Event {
    * @throws IOException
    */
   public RegistrationResponse(byte[] eventBytes) throws IOException {
-    this.eventBytes = eventBytes;
-    this.unmarshallBytes();
+    super(eventBytes);
   }
 
 
@@ -93,7 +89,6 @@ public class RegistrationResponse extends Protocol implements Event {
 
   @Override
   public void unmarshallBytes() throws IOException {
-    // TODO: Unpack bytes of REGISTRATION RESPONSE into appropriate fields.
     // Open data a data stream out of the raw eventBytes field of this instance.
     ByteArrayInputStream baInput = new ByteArrayInputStream(this.eventBytes);
     DataInputStream dataInput = new DataInputStream(new BufferedInputStream(baInput));

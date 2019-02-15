@@ -36,7 +36,8 @@ public class TCPReceiverThread implements Runnable {
         EventFactory eventFactory = EventFactory.getInstance();
         Event event = eventFactory.createEvent(marshalledBytes);
         //System.out.println(event);
-        this.node.onEvent(event);
+
+        this.node.onEvent(event, this.socket);
 
         //dataInputStream.close();
 

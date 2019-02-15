@@ -1,5 +1,6 @@
 package main.java.cs455.overlay.node;
 
+import com.sun.corba.se.impl.orbutil.graph.Graph;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -8,11 +9,9 @@ import java.net.*;
 import java.util.Scanner;
 import java.util.stream.Collectors;
 import main.java.cs455.overlay.transport.*;
+import main.java.cs455.overlay.util.GraphEdge;
 import main.java.cs455.overlay.util.OverlayCreator;
-import main.java.cs455.overlay.wireformats.Deregister;
-import main.java.cs455.overlay.wireformats.Event;
-import main.java.cs455.overlay.wireformats.EventFactory;
-import main.java.cs455.overlay.wireformats.RegistrationResponse;
+import main.java.cs455.overlay.wireformats.*;
 
 public class Registry implements Node {
 
@@ -38,15 +37,41 @@ public class Registry implements Node {
 
   // Starts TCPServerThread's run() method
   public void startServerThread() {
-    Thread serverThread = new Thread(this.registryServer);
+    Thread serverThread = new Thread(this.registryServer, "Registry Server Thread");
     serverThread.start();
   }
 
-  public void createOverlay(int numLinksPerNode) {
+  public void createOverlay(int numLinksPerNode) throws IOException {
     this.overlayCreator = new OverlayCreator(registryEntries, numLinksPerNode);
     for (int i = 0; i < registryEntries.size(); i++) {
-      System.out.printf("Node at index %d has edges:\n%s\n", i, registryEntries.get(i).getEdgeConnections());
+      //System.out.printf("Node at index %d has edges:\n%s\n", i, registryEntries.get(i).getEdgeConnections());
+      this.sendMessagingNodesList(i);
     }
+  }
+
+  // TODO: Remove print statements
+  /**
+   * Create list of nodes that the recipient should connect to.
+   * @param index The index of the RegistryEntry in registryEntries
+   */
+  public void sendMessagingNodesList(int index) throws IOException {
+    RegistryEntry fromNode = registryEntries.get(index);
+    ArrayList<RegistryEntry> listOfToNodes = new ArrayList<>();
+    //System.out.printf("From index: %d\n", index);
+    for (GraphEdge ge: fromNode.edges) {
+      // Only include nodes which have from coming out of it and to going to a different node
+      if (ge.from == index) {
+        RegistryEntry toNode = registryEntries.get(ge.to);
+        listOfToNodes.add(toNode);
+        //System.out.printf("To index: %d\n", ge.to);
+        //System.out.printf("To Node: %s\n", toNode);
+      }
+    }
+
+    MessagingNodesList messagingNodesList = new MessagingNodesList(REGISTRY_PORT,
+        REGISTRY_HOSTNAME, REGISTRY_IP, listOfToNodes);
+
+    this.registryServer.sendData(messagingNodesList.getBytes(), fromNode.socket);
   }
 
   /**
@@ -56,17 +81,17 @@ public class Registry implements Node {
    * @param event The Register request
    * @throws IOException
    */
-  public void registerMessagingNode(Event event) throws IOException {
+  public void registerMessagingNode(Event event, Socket socket) throws IOException {
     RegistryEntry request = new RegistryEntry(
-        event.getPortNumber(), event.getHostName(), event.getIpAddress());
+        event.getPortNumber(), event.getHostName(), event.getIpAddress(), this.registryServer.currentSocket);
 
     RegistrationResponse response;
-    hostNamesMatch(request.hostName);
+    hostNamesMatch(request.hostName, socket);
     // Verify that:
     // 1: The address of the request matches the origin address.
     // 2: The node is not already registered.
     // Register the node by adding it to registryEntries, then send a success response back to origin.
-    if (hostNamesMatch(request.hostName) && !isNodeRegistered(request)) {
+    if (hostNamesMatch(request.hostName, socket) && !isNodeRegistered(request)) {
       registryEntries.add(request);
       response = new RegistrationResponse(REGISTRY_PORT, REGISTRY_HOSTNAME, REGISTRY_IP,
           (byte) 0, (byte) 1, request.toString()); // 1 = success
@@ -80,12 +105,12 @@ public class Registry implements Node {
       System.err.printf("Failed to register Node on %s at port %d\n",
           request.hostName, request.portNumber);
     }
-    this.registryServer.sendData(response.getBytes());
+    this.registryServer.sendData(response.getBytes(), socket);
   }
 
-  public synchronized void deregisterMessagingNode(Event event) throws IOException  {
+  public synchronized void deregisterMessagingNode(Event event, Socket socket) throws IOException  {
     RegistryEntry request = new RegistryEntry(
-        event.getPortNumber(), event.getHostName(), event.getIpAddress());
+        event.getPortNumber(), event.getHostName(), event.getIpAddress(), this.registryServer.currentSocket);
 
     RegistrationResponse response;
     // Verify that:
@@ -93,7 +118,7 @@ public class Registry implements Node {
     // 2: The node is already registered.
     // Deregister the node by adding removing its entry from registryEntries list,
     // then send a succeooss response back to origin.
-    if (hostNamesMatch(request.hostName) && isNodeRegistered(request)) {
+    if (hostNamesMatch(request.hostName, socket) && isNodeRegistered(request)) {
       for (int i = 0; i < registryEntries.size(); ++i) {
         if (registryEntries.get(i).equals(request)) {
           registryEntries.remove(i);
@@ -111,7 +136,7 @@ public class Registry implements Node {
       System.err.printf("Failed to deregister Node on %s at port %d\n",
           request.hostName, request.portNumber);
     }
-    this.registryServer.sendData(response.getBytes());
+    this.registryServer.sendData(response.getBytes(), socket);
   }
 
   // TODO REMOVE DEPRECATION, not being used anymore
@@ -137,9 +162,9 @@ public class Registry implements Node {
    * @param requestHostName The host name contained in the request.
    * @return Boolean true or false if they match.
    */
-  public boolean hostNamesMatch(String requestHostName) {
-    String originHostName = this.registryServer.currentSocket.getInetAddress().getHostName();
-    return originHostName.equals(requestHostName + ".cs.colostate.edu");
+  public boolean hostNamesMatch(String requestHostName, Socket socket) {
+    String originHostName = socket.getInetAddress().getHostName();
+    return originHostName.contains(requestHostName);
   }
 
   /**
@@ -147,7 +172,7 @@ public class Registry implements Node {
    * @param request The request containing a port, host name, and ip address.
    * @return The boolean value true or false if it already is registered.
    */
-  public boolean isNodeRegistered(RegistryEntry request) {
+  public synchronized boolean isNodeRegistered(RegistryEntry request) {
     for (int i = 0; i < registryEntries.size(); i++) {
       if (request.equals(registryEntries.get(i))) {
         return true;
@@ -157,10 +182,10 @@ public class Registry implements Node {
   }
 
   @Override
-  public void onEvent(Event event) throws IOException {
+  public void onEvent(Event event, Socket socket) throws IOException {
     switch (event.getType()) {
-      case REGISTER: registerMessagingNode(event); break;
-      case DEREGISTER: deregisterMessagingNode(event); break;
+      case REGISTER: registerMessagingNode(event, socket); break;
+      case DEREGISTER: deregisterMessagingNode(event, socket); break;
       default: System.out.println("Unknown event type!");
     }
   }
@@ -192,7 +217,10 @@ public class Registry implements Node {
       case "createOverlay":
         int numLinksPerNode = scan.nextInt();
         registry.createOverlay(numLinksPerNode); break;
-      default: break;
+      case "help":
+      default:
+        System.out.printf("Commands:\tDescriptions:\nexit\t\texits the process.\ncreateOverlay\t"
+            + "asks for an integer number of links to create between nodes\n");
     }
 
     scan.close();

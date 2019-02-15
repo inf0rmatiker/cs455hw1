@@ -6,6 +6,6 @@ import main.java.cs455.overlay.wireformats.Event;
 
 public interface Node {
 
-  public void onEvent(Event event) throws IOException;
+  public void onEvent(Event event, Socket socket) throws IOException;
 
 }

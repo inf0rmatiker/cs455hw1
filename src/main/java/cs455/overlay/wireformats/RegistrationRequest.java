@@ -11,8 +11,7 @@ public abstract class RegistrationRequest extends Protocol implements Event {
    * @throws IOException
    */
   public RegistrationRequest(byte[] eventBytes) throws IOException {
-    this.eventBytes = eventBytes;
-    this.unmarshallBytes();
+    super(eventBytes);
   }
 
   /**
@@ -24,10 +23,7 @@ public abstract class RegistrationRequest extends Protocol implements Event {
    */
   public RegistrationRequest(int type, int portNumber, String hostName, String ipAddress)
       throws IOException {
-    this.type = type;
-    this.portNumber = portNumber;
-    this.hostName = hostName;
-    this.ipAddress = ipAddress;
+    super(type, portNumber, hostName, ipAddress);
     this.marshallBytes();
   }
 
@@ -68,7 +64,12 @@ public abstract class RegistrationRequest extends Protocol implements Event {
   public String toString() {
     String result = "REGISTRATION REQUEST\n";
     result += "Request Type: ";
-    result += (this.type == 0) ? "Register\n" : "Deregister\n";
+    switch (this.type) {
+      case 0: result += "Register\n"; break;
+      case 1: result += "Deregister\n"; break;
+      case 2: result += "Connection Request\n"; break;
+      default: result += "Unknown request type!\n";
+    }
     result += String.format("Request Origin:\n\tPort %d\n\tHost %s\n\tIP %s\n", this.portNumber,
         this.hostName, this.ipAddress);
     return result;

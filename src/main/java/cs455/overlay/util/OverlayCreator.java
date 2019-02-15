@@ -3,12 +3,18 @@ package main.java.cs455.overlay.util;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import main.java.cs455.overlay.node.RegistryEntry;
 
 public class OverlayCreator {
 
   public List<RegistryEntry> nodeList;
   public List<GraphEdge> edgesList;
+
+  // Default ctor for testing
+  public OverlayCreator() {
+
+  }
 
   public OverlayCreator(List<RegistryEntry> nodeList, int linksPerNode) {
     this.nodeList = nodeList;
@@ -29,7 +35,7 @@ public class OverlayCreator {
       System.exit(1);
     }
     else if (nodeList.size() == 2 && linksPerNode == 1) {
-      GraphEdge edge = new GraphEdge (0,1, 0);
+      GraphEdge edge = new GraphEdge (0,1, getRandomWeight());
       edgesList.add(edge);
       nodeList.get(0).edges.add(edge);
       nodeList.get(1).edges.add(edge);
@@ -43,19 +49,15 @@ public class OverlayCreator {
       // odd numbers between (1, k).
       for (int i = 0; i < nodeList.size(); i++) {
         if (isOdd(nodeList.size())) { // n is odd
-
           for (int j = 3; j < linksPerNode; j += 2) {
             addGraphNodeToVertices(i, (j + i) % nodeList.size());
           }
-
         } else { // n is even
           if (isEven(linksPerNode)) { // k is even
             int numEvens = this.countEvenNumbersBetweenOneAndK(linksPerNode);
-
             for (int j = 2; j < (numEvens + 1) && j < nodeList.size() / 2; j++) {
               addGraphNodeToVertices(i, (j + i) % nodeList.size());
             }
-
           } else if (isOdd(linksPerNode)) { // k is odd
             int numOdds = countOddNumbersBetweenOneAndK(linksPerNode);
             for (int j = 0; j < numOdds; j++) {
@@ -69,11 +71,10 @@ public class OverlayCreator {
         }
       }
     }
-
   }
 
   public void addGraphNodeToVertices(int from, int to) {
-    GraphEdge ge = new GraphEdge(from, to, 0);
+    GraphEdge ge = new GraphEdge(from, to, getRandomWeight());
     edgesList.add(ge);
     nodeList.get(from).edges.add(ge);
     nodeList.get(to).edges.add(ge);
@@ -95,12 +96,17 @@ public class OverlayCreator {
     return result;
   }
 
+  public int getRandomWeight() {
+    Random randomGenerator = new Random();
+    int result = randomGenerator.nextInt(10 - 1) + 1;
+    return result;
+  }
 
   public void createCircleLinks() {
     int nextIndex = 1;
     for (int i = 0; i < nodeList.size(); i++) {
       nextIndex = nextIndex % nodeList.size();
-      GraphEdge graphEdge = new GraphEdge(i, nextIndex, 0);
+      GraphEdge graphEdge = new GraphEdge(i, nextIndex, getRandomWeight());
       edgesList.add(graphEdge);
       nodeList.get(i).edges.add(graphEdge);
       nodeList.get(nextIndex).edges.add(graphEdge);

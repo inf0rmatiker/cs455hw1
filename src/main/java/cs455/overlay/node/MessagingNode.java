@@ -2,6 +2,8 @@ package main.java.cs455.overlay.node;
 
 import java.io.*;
 import java.net.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 import main.java.cs455.overlay.transport.TCPServerThread;
 import main.java.cs455.overlay.wireformats.*;
@@ -16,6 +18,8 @@ public class MessagingNode implements Node {
   public TCPServerThread messagingServer;
   public boolean isRegistered = false;
 
+  public List<RegistryEntry> nodeList;
+
   /**
    * Initializes the registry host and port specified from args.
    * Also initializes the TCPServerThread object.
@@ -29,9 +33,9 @@ public class MessagingNode implements Node {
     this.messagingHost = this.getMessagingHost();
     this.messagingPort = this.getMessagingPort();
     this.messagingIpAddress = this.getMessagingIpAddress();
-
-    this.sendRegistrationRequest();
+    this.nodeList = new ArrayList<>();
     this.startServerThread();
+    this.sendRegistrationRequest();
   }
 
   /**
@@ -62,12 +66,12 @@ public class MessagingNode implements Node {
    * Starts TCPServerThread's thread.
    */
   public void startServerThread() {
-    Thread serverThread = new Thread(this.messagingServer);
+    Thread serverThread = new Thread(this.messagingServer, "Messaging Server Thread");
     serverThread.start();
   }
 
   @Override
-  public void onEvent(Event event) {
+  public void onEvent(Event event, Socket socket) throws IOException {
     switch (event.getType()) {
       case REGISTRATION_RESPONSE:
         System.out.println(event);
@@ -79,9 +83,64 @@ public class MessagingNode implements Node {
           this.handleRegistrationResponse(response);
         }
         break;
+      case MESSAGING_NODES_LIST:
+        this.connectToOtherMessagingNodes((MessagingNodesList) event); break;
+      case CONNECTION_REQUEST:
+        this.handleConnectionRequest((ConnectionRequest) event); break;
+      case CONNECTION_RESPONSE:
+        this.handleConnectionResponse((ConnectionResponse) event); break;
       default: System.out.println("Unknown event type!");
     }
+  }
 
+  /**
+   * Establishes socket connections with the nodes in nodeList.
+   * @param nodeList The list of nodes that need to have a connection established with
+   */
+  public void connectToOtherMessagingNodes(MessagingNodesList nodeList) throws IOException {
+    // Add all the nodes in the request list to our nodeList
+    for (RegistryEntry re: nodeList.nodeList) {
+      this.nodeList.add(re);
+    }
+
+    for (int i = 0; i < this.nodeList.size(); i++) {
+      // Establish a socket by sending a message over
+      ConnectionRequest connectionRequest = new ConnectionRequest(this.messagingPort, this.messagingHost,
+          this.messagingIpAddress);
+      this.messagingServer.sendData(this.nodeList.get(i).portNumber, this.nodeList.get(i).hostName,
+          connectionRequest.getBytes());
+
+      // Save the socket that was created when sending data to the RegistryEntry's socket field
+      this.nodeList.get(i).socket = this.messagingServer.currentSocket;
+    }
+  }
+
+  /**
+   * Creates a RegistryEntry object to save the socket/connection of the incoming request.
+   * @param request The message containing the originating port, host, and IP address of the sender
+   * @throws IOException
+   */
+  public void handleConnectionRequest(ConnectionRequest request) throws IOException {
+    RegistryEntry entry = new RegistryEntry(request.getPortNumber(), request.getHostName(),
+        request.getIpAddress(), this.messagingServer.currentSocket);
+
+    System.out.printf("Received connection from %s on port %d\n", entry.hostName, entry.portNumber);
+
+    this.sendConnectionResponse(entry.hostName, entry.portNumber, entry.socket);
+
+  }
+
+  public void sendConnectionResponse(String hostName, int portNumber, Socket socket)  throws IOException {
+    ConnectionResponse response = new ConnectionResponse(this.messagingPort, this.messagingHost,
+        this.messagingIpAddress, (byte) 1, "Connected successfully");
+
+    this.messagingServer.listenForResponse(socket);
+    this.messagingServer.sendData(response.getBytes(), socket);
+
+  }
+
+  public void handleConnectionResponse(ConnectionResponse response) throws IOException {
+    System.out.println(response);
   }
 
   public void sendRegistrationRequest() throws IOException {
@@ -94,7 +153,7 @@ public class MessagingNode implements Node {
         this.REGISTRY_HOST, registerRequest.getBytes());
 
     // messagingServer's currentSocket should now be connected to Registry's server
-    this.messagingServer.listenForResponse();
+    this.messagingServer.listenForResponse(this.messagingServer.currentSocket);
   }
 
   public void sendDeregistrationRequest() throws IOException {
@@ -106,7 +165,7 @@ public class MessagingNode implements Node {
     this.messagingServer.sendData(deregisterRequest.getBytes());
 
     // messagingServer's currentSocket should now be connected to Registry's server
-    this.messagingServer.listenForResponse();
+    this.messagingServer.listenForResponse(this.messagingServer.currentSocket);
   }
 
   public void handleRegistrationResponse(RegistrationResponse response) {

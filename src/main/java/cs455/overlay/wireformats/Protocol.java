@@ -7,7 +7,7 @@ import java.io.IOException;
 public abstract class Protocol implements Event {
 
   public enum EventType {
-    REGISTER, DEREGISTER, REGISTRATION_RESPONSE
+    REGISTER, DEREGISTER, REGISTRATION_RESPONSE, MESSAGING_NODES_LIST, CONNECTION_REQUEST, CONNECTION_RESPONSE
   }
 
   protected byte[] eventBytes;
@@ -15,6 +15,19 @@ public abstract class Protocol implements Event {
   protected String hostName;
   protected String ipAddress;
   public int type;
+
+  protected Protocol(int type, int portNumber, String hostName, String ipAddress) throws IOException {
+    this.type = type;
+    this.portNumber = portNumber;
+    this.hostName = hostName;
+    this.ipAddress = ipAddress;
+  }
+
+  protected Protocol(byte[] eventBytes) throws IOException {
+    this.eventBytes = eventBytes;
+    this.unmarshallBytes();
+  }
+
 
   /**
    * Returns an enum specifying the type of Event based on
@@ -27,6 +40,9 @@ public abstract class Protocol implements Event {
       case 0: return EventType.REGISTER;
       case 1: return EventType.DEREGISTER;
       case 2: return EventType.REGISTRATION_RESPONSE;
+      case 3: return EventType.MESSAGING_NODES_LIST;
+      case 4: return EventType.CONNECTION_REQUEST;
+      case 5: return EventType.CONNECTION_RESPONSE;
       default: return null;
     }
   }

@@ -73,7 +73,7 @@ public class TCPServerThread implements Runnable {
    * its given Socket.
    */
   public void startReceiverThread() {
-    Thread receiverThread = new Thread(receiver);
+    Thread receiverThread = new Thread(receiver, "Receiver Thread");
     receiverThread.start();
   }
 
@@ -99,10 +99,19 @@ public class TCPServerThread implements Runnable {
   }
 
   /**
+   * Sends a data across the socket that has been established previously.
+   */
+  public void sendData(byte[] bytesToSend, Socket socket) throws IOException {
+    //this.currentSocket = socket;
+    TCPSender sender = new TCPSender(socket);
+    sender.sendBytes(bytesToSend);
+  }
+
+  /**
    * Assumes that data has just been sent, and currentSocket is set.
    */
-  public void listenForResponse() throws IOException {
-    this.receiver = new TCPReceiverThread(this.node, this.currentSocket);
+  public void listenForResponse(Socket socket) throws IOException {
+    this.receiver = new TCPReceiverThread(this.node, socket);
     this.startReceiverThread();
   }
 
@@ -113,8 +122,11 @@ public class TCPServerThread implements Runnable {
       try {
         // Creates a receiver thread from the node instance and socket that gets made from
         // the connection.
-        this.currentSocket = this.serverSocket.accept();
-        this.receiver = new TCPReceiverThread(this.node, this.currentSocket);
+        //this.currentSocket = this.serverSocket.accept();
+
+        Socket newSocket = this.serverSocket.accept();
+        this.currentSocket = newSocket;
+        this.receiver = new TCPReceiverThread(this.node, newSocket);
         this.startReceiverThread();
       } catch (IOException e) {
         System.err.println(e.getMessage());
