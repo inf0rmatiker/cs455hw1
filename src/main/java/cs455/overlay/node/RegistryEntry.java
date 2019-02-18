@@ -43,7 +43,7 @@ public class RegistryEntry {
 
   @Override
   public String toString() {
-    return String.format("Node registered on %s at port number: %d\n",
+    return String.format("Node registered on %s at port number: %d",
         this.hostName, this.portNumber);
   }
 

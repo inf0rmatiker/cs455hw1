@@ -116,7 +116,7 @@ public class MessagingNodesList extends Protocol implements Event {
     String result = "MessagingNodeList (Requested Connections):\n{\n\t";
     result += String.join("\n\n\t", this.nodeList.stream().map(Object::toString).collect(
         Collectors.toList()));
-    result += "}\n";
+    result += "\n}\n";
     return result;
   }
 

@@ -9,7 +9,7 @@ public class TCPServerThread implements Runnable {
 
   public ServerSocket serverSocket;
   public Socket currentSocket;
-  public TCPReceiverThread receiver;
+  //public TCPReceiverThread receiver;
   public int port;
   public boolean isRegistry = true;
   public Node node;
@@ -72,7 +72,7 @@ public class TCPServerThread implements Runnable {
    * Spins up a TCPReceiverThread to listen for incoming data on
    * its given Socket.
    */
-  public void startReceiverThread() {
+  public void startReceiverThread(TCPReceiverThread receiver) {
     Thread receiverThread = new Thread(receiver, "Receiver Thread");
     receiverThread.start();
   }
@@ -85,9 +85,11 @@ public class TCPServerThread implements Runnable {
    * @param bytesToSend the raw data.
    * @throws IOException
    */
-  public void sendData(int port, String host, byte[] bytesToSend) throws IOException {
-    this.currentSocket = new Socket(host, port);
+  public Socket sendData(int port, String host, byte[] bytesToSend) throws IOException {
+    Socket socket = new Socket(host, port);
+    this.currentSocket = socket;
     this.sendData(bytesToSend);
+    return socket;
   }
 
   /**
@@ -111,8 +113,8 @@ public class TCPServerThread implements Runnable {
    * Assumes that data has just been sent, and currentSocket is set.
    */
   public void listenForResponse(Socket socket) throws IOException {
-    this.receiver = new TCPReceiverThread(this.node, socket);
-    this.startReceiverThread();
+    TCPReceiverThread receiver = new TCPReceiverThread(this.node, socket);
+    this.startReceiverThread(receiver);
   }
 
   @Override
@@ -126,8 +128,8 @@ public class TCPServerThread implements Runnable {
 
         Socket newSocket = this.serverSocket.accept();
         this.currentSocket = newSocket;
-        this.receiver = new TCPReceiverThread(this.node, newSocket);
-        this.startReceiverThread();
+        TCPReceiverThread receiver = new TCPReceiverThread(this.node, newSocket);
+        this.startReceiverThread(receiver);
       } catch (IOException e) {
         System.err.println(e.getMessage());
       }

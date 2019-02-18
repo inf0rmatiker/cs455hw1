@@ -94,7 +94,8 @@ public class ConnectionResponse extends Protocol implements Event {
 
     @Override
     public String toString() {
-      return String.format("CONNECTION RESPONSE:\nOrigin: %s on port %d\n", this.hostName, this.portNumber);
+      return String.format("Connection Response:\nOrigin: %s on port %d\n",
+          this.hostName, this.portNumber);
     }
 
 

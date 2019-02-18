@@ -3,9 +3,13 @@ package main.java.cs455.overlay.node;
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Scanner;
+import main.java.cs455.overlay.dijkstra.RoutingCache;
 import main.java.cs455.overlay.transport.TCPServerThread;
+import main.java.cs455.overlay.util.GraphEdge;
+import main.java.cs455.overlay.util.GraphNode;
 import main.java.cs455.overlay.wireformats.*;
 
 public class MessagingNode implements Node {
@@ -17,6 +21,7 @@ public class MessagingNode implements Node {
   public String messagingIpAddress;
   public TCPServerThread messagingServer;
   public boolean isRegistered = false;
+  RoutingCache rCache;
 
   public List<RegistryEntry> nodeList;
 
@@ -86,9 +91,11 @@ public class MessagingNode implements Node {
       case MESSAGING_NODES_LIST:
         this.connectToOtherMessagingNodes((MessagingNodesList) event); break;
       case CONNECTION_REQUEST:
-        this.handleConnectionRequest((ConnectionRequest) event); break;
+        this.handleConnectionRequest((ConnectionRequest) event, socket); break;
       case CONNECTION_RESPONSE:
-        this.handleConnectionResponse((ConnectionResponse) event); break;
+        this.handleConnectionResponse((ConnectionResponse) event, socket); break;
+      case LINK_WEIGHTS:
+        this.handleLinkWeightsMessage((LinkWeights) event); break;
       default: System.out.println("Unknown event type!");
     }
   }
@@ -108,11 +115,13 @@ public class MessagingNode implements Node {
       // Establish a socket by sending a message over
       ConnectionRequest connectionRequest = new ConnectionRequest(this.messagingPort, this.messagingHost,
           this.messagingIpAddress);
-      this.messagingServer.sendData(this.nodeList.get(i).portNumber, this.nodeList.get(i).hostName,
-          connectionRequest.getBytes());
 
+
+      // Establish a socket by sending a message over
       // Save the socket that was created when sending data to the RegistryEntry's socket field
-      this.nodeList.get(i).socket = this.messagingServer.currentSocket;
+      this.nodeList.get(i).socket = this.messagingServer.sendData(this.nodeList.get(i).portNumber,
+          this.nodeList.get(i).hostName, connectionRequest.getBytes());
+      this.messagingServer.listenForResponse(this.nodeList.get(i).socket);
     }
   }
 
@@ -121,9 +130,9 @@ public class MessagingNode implements Node {
    * @param request The message containing the originating port, host, and IP address of the sender
    * @throws IOException
    */
-  public void handleConnectionRequest(ConnectionRequest request) throws IOException {
+  public void handleConnectionRequest(ConnectionRequest request, Socket socket) throws IOException {
     RegistryEntry entry = new RegistryEntry(request.getPortNumber(), request.getHostName(),
-        request.getIpAddress(), this.messagingServer.currentSocket);
+        request.getIpAddress(), socket);
 
     System.out.printf("Received connection from %s on port %d\n", entry.hostName, entry.portNumber);
 
@@ -135,12 +144,12 @@ public class MessagingNode implements Node {
     ConnectionResponse response = new ConnectionResponse(this.messagingPort, this.messagingHost,
         this.messagingIpAddress, (byte) 1, "Connected successfully");
 
-    this.messagingServer.listenForResponse(socket);
+
     this.messagingServer.sendData(response.getBytes(), socket);
 
   }
 
-  public void handleConnectionResponse(ConnectionResponse response) throws IOException {
+  public void handleConnectionResponse(ConnectionResponse response, Socket socket) throws IOException {
     System.out.println(response);
   }
 
@@ -179,6 +188,58 @@ public class MessagingNode implements Node {
     }
   }
 
+  public void handleLinkWeightsMessage(LinkWeights linkWeights) {
+    setupRoutingCache(linkWeights);
+  }
+
+  public void setupRoutingCache(LinkWeights linkWeights) {
+    rCache = new RoutingCache();
+
+    // Create all GraphNodes and add them to rCache.nodes
+    for (String info: linkWeights.getLinksInformation()) {
+      // Should split the info string into an array like:
+      // [hostnameA, portnumA, hostnameB, portnumB, weight]
+      String[] infoArray = info.split("[ :]");
+
+      // Creates a key in the form: "hostnameA:portnumA" and adds it to nodes if it has not
+      // been already added.
+      String key = infoArray[0] + ":" + infoArray[1];
+      if (getNodeIndex(key) == -1)
+        rCache.nodes.add(new GraphNode(Integer.parseInt(infoArray[1]), infoArray[0], key));
+    }
+
+    // Create all GraphEdges and add them to rCache.edges
+    for (String info: linkWeights.getLinksInformation()) {
+      String[] infoArray = info.split("[ :]");
+      String keyA = infoArray[0] + ":" + infoArray[1];
+      String keyB = infoArray[2] + ":" + infoArray[3];
+
+      int from = getNodeIndex(keyA);
+      int to = getNodeIndex(keyB);
+      rCache.edges.add(new GraphEdge(from, to, Integer.parseInt(infoArray[4])));
+    }
+
+    // Sort edges by weight
+    Collections.sort(rCache.edges);
+
+    // Add all edges to GraphNode edges lists
+    for (GraphEdge ge: rCache.edges) {
+      rCache.nodes.get(ge.from).edges.add(ge);
+      rCache.nodes.get(ge.to).edges.add(ge);
+    }
+
+    System.out.println(rCache);
+  }
+
+  public int getNodeIndex(String key) {
+    for (int i = 0; i < rCache.nodes.size(); i++) {
+      if (rCache.nodes.get(i).getKey().equals(key)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   /**
    * If the Registry was able to successfully deregister the node, close all connections and
    * terminate.
@@ -191,7 +252,6 @@ public class MessagingNode implements Node {
 
       try {
         if (this.messagingServer.currentSocket != null)
-          this.messagingServer.receiver.dataInputStream.close();
           this.messagingServer.currentSocket.close();
         this.messagingServer.serverSocket.close();
       } catch (IOException e) {
@@ -223,7 +283,6 @@ public class MessagingNode implements Node {
 
 
     Scanner reader = new Scanner(System.in);  // Reading user input
-    System.out.println("Enter a command: ");
     String command = reader.next(); // Scans the next token of the input as an int.
     reader.close();
 

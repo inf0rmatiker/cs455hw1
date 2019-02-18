@@ -36,6 +36,7 @@ public class EventFactory {
       case MESSAGING_NODES_LIST: return createMessagingNodesListEvent(marshalledBytes);
       case CONNECTION_REQUEST: return createConnectionRequest(marshalledBytes);
       case CONNECTION_RESPONSE: return createConnectionResponse(marshalledBytes);
+      case LINK_WEIGHTS: return createLinkWeights(marshalledBytes);
       default: return null;
     }
   }
@@ -62,6 +63,10 @@ public class EventFactory {
 
   public ConnectionResponse createConnectionResponse(byte[] marshalledBytes) throws IOException {
     return new ConnectionResponse(marshalledBytes);
+  }
+
+  public LinkWeights createLinkWeights(byte[] marshalledBytes) throws IOException {
+    return new LinkWeights(marshalledBytes);
   }
 
   /**

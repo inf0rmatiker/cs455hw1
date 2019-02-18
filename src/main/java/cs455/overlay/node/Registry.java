@@ -1,6 +1,5 @@
 package main.java.cs455.overlay.node;
 
-import com.sun.corba.se.impl.orbutil.graph.Graph;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -43,6 +42,7 @@ public class Registry implements Node {
 
   public void createOverlay(int numLinksPerNode) throws IOException {
     this.overlayCreator = new OverlayCreator(registryEntries, numLinksPerNode);
+    this.printOverlay(overlayCreator);
     for (int i = 0; i < registryEntries.size(); i++) {
 
       //System.out.printf("Node at index %d has edges:\n%s\n", i, registryEntries.get(i).getEdgeConnections());
@@ -62,7 +62,7 @@ public class Registry implements Node {
    */
   public void sendMessagingNodesList(int index) throws IOException {
     RegistryEntry fromNode = registryEntries.get(index);
-    System.out.printf("Index %d entry: %s\n",index, registryEntries.get(index));
+    //System.out.printf("Index %d entry: %s\n",index, registryEntries.get(index));
     ArrayList<RegistryEntry> listOfToNodes = new ArrayList<>();
     //System.out.printf("From index: %d\n", index);
     for (GraphEdge ge: fromNode.edges) {
@@ -77,12 +77,23 @@ public class Registry implements Node {
       }
     }
 
-
     MessagingNodesList messagingNodesList = new MessagingNodesList(REGISTRY_PORT,
         REGISTRY_HOSTNAME, REGISTRY_IP, listOfToNodes);
-    //System.out.printf("%s", messagingNodesList);
-    //System.out.printf("%s\n", fromNode.socket.getInetAddress().getHostName());
     this.registryServer.sendData(messagingNodesList.getBytes(), fromNode.socket);
+  }
+
+  /**
+   * Sends a message to all registered nodes containing the weights for each link in the graph.
+   */
+  public void sendLinkWeights() throws IOException {
+    int totalNumLinks = this.overlayCreator.edgesList.size();
+    LinkWeights linkWeights = new LinkWeights(REGISTRY_PORT, REGISTRY_HOSTNAME, REGISTRY_IP,
+        totalNumLinks, this.registryEntries, this.overlayCreator.edgesList);
+    // TODO: Remove testing print statements
+    System.out.printf("\n%s\n", linkWeights);
+    for (int i = 0; i < registryEntries.size(); i++) {
+      this.registryServer.sendData(linkWeights.getBytes(), registryEntries.get(i).socket);
+    }
   }
 
   /**
@@ -130,7 +141,7 @@ public class Registry implements Node {
     // 1: The address of the request matches the origin address.
     // 2: The node is already registered.
     // Deregister the node by adding removing its entry from registryEntries list,
-    // then send a succeooss response back to origin.
+    // then send a success response back to origin.
     if (hostNamesMatch(request.hostName, socket) && isNodeRegistered(request)) {
       for (int i = 0; i < registryEntries.size(); ++i) {
         if (registryEntries.get(i).equals(request)) {
@@ -204,8 +215,17 @@ public class Registry implements Node {
     }
   }
 
-  public String getRegisteredNodesInString() {
-    return String.join("\n", this.registryEntries.stream().map(Object::toString).collect(Collectors.toList()));
+  public void printOverlay(OverlayCreator overlayCreator) {
+    System.out.println(">> PRINTING OVERLAY <<\n");
+    System.out.printf("Total number of nodes: %d\n", registryEntries.size());
+    System.out.printf("Total number of links: %d\n", overlayCreator.edgesList.size());
+    for (int i = 0; i < registryEntries.size(); i++) {
+      String entry = String.format("Index %d entry: %s\n", i, registryEntries.get(i));
+      for (GraphEdge ge: registryEntries.get(i).edges) {
+        entry += String.format("\t%s",ge);
+      }
+      System.out.println(entry);
+    }
   }
 
   @Override
@@ -223,21 +243,32 @@ public class Registry implements Node {
 
     System.out.println(registry);
 
+    // Handle user input
     Scanner scan = new Scanner(System.in);
-    String command = scan.next();
+    while (true) {
+      String command = scan.next();
 
-    switch (command) {
-      case "exit": System.exit(0);
-      case "createOverlay":
+      if (command.toLowerCase().equals("exit")) break;
+      if (command.toLowerCase().equals("setup-overlay")) {
         int numLinksPerNode = scan.nextInt();
-        registry.createOverlay(numLinksPerNode); break;
-      case "help":
-      default:
-        System.out.printf("Commands:\tDescriptions:\nexit\t\texits the process.\ncreateOverlay\t"
-            + "asks for an integer number of links to create between nodes\n");
+        registry.createOverlay(numLinksPerNode);
+      }
+      else if (command.toLowerCase().equals("send-link-weights")) {
+        registry.sendLinkWeights();
+      }
+      else {
+        System.out.printf(
+            "Commands:\tDescriptions:\n"
+                + "exit\t\tExits the process.\n"
+                + "setup-overlay <int>\tCreates an overlay with n links per node.\n"
+                + "send-link-weights\tSends a message to all nodes with link weights.\n"
+                + "help\t\tShow usage message."
+        );
+      }
     }
 
     scan.close();
+    System.exit(0);
   }
 
 }

@@ -7,7 +7,8 @@ import java.io.IOException;
 public abstract class Protocol implements Event {
 
   public enum EventType {
-    REGISTER, DEREGISTER, REGISTRATION_RESPONSE, MESSAGING_NODES_LIST, CONNECTION_REQUEST, CONNECTION_RESPONSE
+    REGISTER, DEREGISTER, REGISTRATION_RESPONSE, MESSAGING_NODES_LIST, CONNECTION_REQUEST,
+    CONNECTION_RESPONSE, LINK_WEIGHTS
   }
 
   protected byte[] eventBytes;
@@ -43,6 +44,7 @@ public abstract class Protocol implements Event {
       case 3: return EventType.MESSAGING_NODES_LIST;
       case 4: return EventType.CONNECTION_REQUEST;
       case 5: return EventType.CONNECTION_RESPONSE;
+      case 6: return EventType.LINK_WEIGHTS;
       default: return null;
     }
   }

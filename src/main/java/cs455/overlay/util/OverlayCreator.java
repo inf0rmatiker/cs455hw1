@@ -2,6 +2,7 @@ package main.java.cs455.overlay.util;
 
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import main.java.cs455.overlay.node.RegistryEntry;
@@ -35,10 +36,7 @@ public class OverlayCreator {
       System.exit(1);
     }
     else if (nodeList.size() == 2 && linksPerNode == 1) {
-      GraphEdge edge = new GraphEdge (0,1, getRandomWeight());
-      edgesList.add(edge);
-      nodeList.get(0).edges.add(edge);
-      nodeList.get(1).edges.add(edge);
+      addGraphEdgeToEdgesList(0, 1);
     }
     else if (linksPerNode > nodeList.size()-1 || linksPerNode < 1) {
       System.err.printf("Incorrect number of links per node!\n");
@@ -50,13 +48,13 @@ public class OverlayCreator {
       for (int i = 0; i < nodeList.size(); i++) {
         if (isOdd(nodeList.size())) { // n is odd
           for (int j = 3; j < linksPerNode; j += 2) {
-            addGraphNodeToVertices(i, (j + i) % nodeList.size());
+            addGraphEdgeToEdgesList(i, (j + i) % nodeList.size());
           }
         } else { // n is even
           if (isEven(linksPerNode)) { // k is even
             int numEvens = this.countEvenNumbersBetweenOneAndK(linksPerNode);
             for (int j = 2; j < (numEvens + 1) && j < nodeList.size() / 2; j++) {
-              addGraphNodeToVertices(i, (j + i) % nodeList.size());
+              addGraphEdgeToEdgesList(i, (j + i) % nodeList.size());
             }
           } else if (isOdd(linksPerNode)) { // k is odd
             int numOdds = countOddNumbersBetweenOneAndK(linksPerNode);
@@ -64,20 +62,31 @@ public class OverlayCreator {
               if (!nodeList.get(i).edges.contains(
                   new GraphEdge(i, (nodeList.size()/2-j+i) % nodeList.size(), 0))
                   ) {
-                addGraphNodeToVertices(i, ((nodeList.size()/2-j) + i) % nodeList.size());
+                addGraphEdgeToEdgesList(i, ((nodeList.size()/2-j) + i) % nodeList.size());
               }
             }
           }
         }
       }
     }
+
+    this.addEdgesToRegistryEntries();
   }
 
-  public void addGraphNodeToVertices(int from, int to) {
+  public void addGraphEdgeToEdgesList(int from, int to) {
     GraphEdge ge = new GraphEdge(from, to, getRandomWeight());
     edgesList.add(ge);
-    nodeList.get(from).edges.add(ge);
-    nodeList.get(to).edges.add(ge);
+  }
+
+  public void addEdgesToRegistryEntries() {
+    // Sort edges by weight
+    Collections.sort(edgesList);
+
+    // Add every edge to both "from" and "to" RegistryEntries edges list
+    for (int i = 0; i < edgesList.size(); i++){
+      nodeList.get(edgesList.get(i).from).edges.add(edgesList.get(i));
+      nodeList.get(edgesList.get(i).to).edges.add(edgesList.get(i));
+    }
   }
 
   public int countEvenNumbersBetweenOneAndK(int k) {
@@ -106,10 +115,7 @@ public class OverlayCreator {
     int nextIndex = 1;
     for (int i = 0; i < nodeList.size(); i++) {
       nextIndex = nextIndex % nodeList.size();
-      GraphEdge graphEdge = new GraphEdge(i, nextIndex, getRandomWeight());
-      edgesList.add(graphEdge);
-      nodeList.get(i).edges.add(graphEdge);
-      nodeList.get(nextIndex).edges.add(graphEdge);
+      addGraphEdgeToEdgesList(i, nextIndex);
       nextIndex++;
     }
   }
