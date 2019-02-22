@@ -129,7 +129,7 @@ public class LinkWeights extends Protocol implements Event {
 
   @Override
   public String toString() {
-    String result = "Link Weights:\n";
+    String result = "";
     result += String.format("Number of links: %d\n\n", this.numberOfLinks);
     for (GraphEdge ge: edges) {
       result += String.format("%s:%d %s:%d weight: %d\n",
