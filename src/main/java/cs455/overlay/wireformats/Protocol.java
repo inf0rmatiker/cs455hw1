@@ -8,7 +8,8 @@ public abstract class Protocol implements Event {
 
   public enum EventType {
     REGISTER, DEREGISTER, REGISTRATION_RESPONSE, MESSAGING_NODES_LIST, CONNECTION_REQUEST,
-    CONNECTION_RESPONSE, LINK_WEIGHTS
+    CONNECTION_RESPONSE, LINK_WEIGHTS, TASK_INITIATE, MESSAGE, TASK_COMPLETE, PULL_TRAFFIC_SUMMARY,
+    TRAFFIC_SUMMARY
   }
 
   protected byte[] eventBytes;
@@ -45,6 +46,11 @@ public abstract class Protocol implements Event {
       case 4: return EventType.CONNECTION_REQUEST;
       case 5: return EventType.CONNECTION_RESPONSE;
       case 6: return EventType.LINK_WEIGHTS;
+      case 7: return EventType.TASK_INITIATE;
+      case 8: return EventType.MESSAGE;
+      case 9: return EventType.TASK_COMPLETE;
+      case 10: return EventType.PULL_TRAFFIC_SUMMARY;
+      case 11: return EventType.TRAFFIC_SUMMARY;
       default: return null;
     }
   }

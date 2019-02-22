@@ -20,6 +20,8 @@ public class Registry implements Node {
   public TCPServerThread registryServer;
   public List<RegistryEntry> registryEntries;
   public OverlayCreator overlayCreator;
+  private int tasksComplete;
+  private int summariesReceived;
 
   public Registry(int portNumber) throws IOException {
     this.registryEntries = new LinkedList<>();
@@ -27,7 +29,7 @@ public class Registry implements Node {
     this.REGISTRY_PORT = portNumber;
     this.REGISTRY_HOSTNAME = registryServer.serverSocket.getInetAddress().getLocalHost().getHostName();
     this.REGISTRY_IP = this.getRegistryIpAddress();
-    this.startServerThread();
+    this.resetSummaries();
   }
 
   public String getRegistryIpAddress() throws IOException {
@@ -42,17 +44,15 @@ public class Registry implements Node {
 
   public void createOverlay(int numLinksPerNode) throws IOException {
     this.overlayCreator = new OverlayCreator(registryEntries, numLinksPerNode);
-    this.printOverlay(overlayCreator);
+    //this.printOverlay(overlayCreator);
     for (int i = 0; i < registryEntries.size(); i++) {
-
-      //System.out.printf("Node at index %d has edges:\n%s\n", i, registryEntries.get(i).getEdgeConnections());
-
-      //System.out.printf("Index %d entry: %s\n",i, registryEntries.get(i));
       this.sendMessagingNodesList(i);
-      //System.out.printf("%s\n", String.join("\n", registryEntries.get(i).edges.stream().map(Object::toString).collect(
-          //Collectors.toList())));
-      //System.out.printf("Index %d socket: %s\n",i, registryEntries.get(i).socket.getInetAddress().getHostName());
     }
+  }
+
+  public void resetSummaries() {
+    this.tasksComplete = 0;
+    this.summariesReceived = 0;
   }
 
   // TODO: Remove print statements
@@ -89,8 +89,6 @@ public class Registry implements Node {
     int totalNumLinks = this.overlayCreator.edgesList.size();
     LinkWeights linkWeights = new LinkWeights(REGISTRY_PORT, REGISTRY_HOSTNAME, REGISTRY_IP,
         totalNumLinks, this.registryEntries, this.overlayCreator.edgesList);
-    // TODO: Remove testing print statements
-    System.out.printf("\n%s\n", linkWeights);
     for (int i = 0; i < registryEntries.size(); i++) {
       this.registryServer.sendData(linkWeights.getBytes(), registryEntries.get(i).socket);
     }
@@ -103,7 +101,7 @@ public class Registry implements Node {
    * @param event The Register request
    * @throws IOException
    */
-  public void registerMessagingNode(Event event, Socket socket) throws IOException {
+  public synchronized void registerMessagingNode(Event event, Socket socket) throws IOException {
     RegistryEntry request = new RegistryEntry(
         event.getPortNumber(), event.getHostName(), event.getIpAddress(), socket);
 
@@ -118,7 +116,8 @@ public class Registry implements Node {
       response = new RegistrationResponse(REGISTRY_PORT, REGISTRY_HOSTNAME, REGISTRY_IP,
           (byte) 0, (byte) 1, request.toString()); // 1 = success
       // TODO: Remove test print statements
-      System.out.printf("Registered Node on %s at port %d\n", request.hostName, request.portNumber);
+      System.out.printf("Registered Node on %s at port %d, at index [%d]\n",
+          request.hostName, request.portNumber, registryEntries.size()-1);
     }
     else { // Either the host names mismatched, or the node was already registered.
       response = new RegistrationResponse(REGISTRY_PORT, REGISTRY_HOSTNAME, REGISTRY_IP,
@@ -164,24 +163,6 @@ public class Registry implements Node {
     this.registryServer.sendData(response.getBytes(), socket);
   }
 
-  // TODO REMOVE DEPRECATION, not being used anymore
-  /**
-   * Compares the IP address of the request's origin to the IP address contained in the request.
-   * @param requestIpAddress The IP address contained in the request.
-   * @return Boolean true or false if they match.
-   */
-  private boolean ipAddressesMatch(String requestIpAddress) {
-    String originSocketAddress = this.registryServer.currentSocket.getRemoteSocketAddress().toString();
-
-    // Strip off the port number and leading '/'
-    originSocketAddress = originSocketAddress.substring(1, originSocketAddress.indexOf(':'));
-    System.err.printf("Request IP: %s\nOrigin IP: %s\n", requestIpAddress, originSocketAddress);
-    if (!requestIpAddress.equals(originSocketAddress)) {
-      System.err.println("IP ADDRESSES DO NOT MATCH");
-    }
-    return requestIpAddress.equals(originSocketAddress);
-  }
-
   /**
    * Compares the host name of the request's origin to the host name contained in the request.
    * @param requestHostName The host name contained in the request.
@@ -211,12 +192,107 @@ public class Registry implements Node {
     switch (event.getType()) {
       case REGISTER: registerMessagingNode(event, socket); break;
       case DEREGISTER: deregisterMessagingNode(event, socket); break;
+      case TASK_COMPLETE: handleTaskCompleteMessage(); break;
+      case TRAFFIC_SUMMARY: handleTrafficSummary((TrafficSummary) event); break;
       default: System.out.println("Unknown event type!");
     }
   }
 
+  // Synchronized because we may have multiple nodes sending summaries at once
+  public synchronized void handleTrafficSummary(TrafficSummary summary) {
+    RegistryEntry entry = getRegistryEntry(summary);
+    if (entry != null) {
+      entry.sentSummation = summary.getSummationSent();
+      entry.receiveSummation = summary.getSummationReceived();
+      entry.numSent = summary.getNumMessagesSent();
+      entry.numReceived = summary.getNumMessagesReceived();
+      entry.numRelayed = summary.getNumMessagesRelayed();
+
+      this.summariesReceived++;
+    }
+    else {
+      System.err.println("Could not find that node!");
+    }
+
+    if (summariesReceived == registryEntries.size()) {
+      this.printSummaries();
+      this.resetSummaries();
+    }
+  }
+
+  public RegistryEntry getRegistryEntry(TrafficSummary summary) {
+    String summaryKey = summary.getHostName() + ":" + summary.getPortNumber();
+    for (RegistryEntry re: registryEntries) {
+      if (re.getKey().equals(summaryKey)) {
+        return re;
+      }
+    }
+    return null;
+  }
+
+  private void printSummaries() {
+    System.out.printf("\n\t\tNumber Messages Sent\tNumber Messages Received\tSummation Sent\tSummation Received\tNumber Messages Relayed\n\n");
+    String result = "";
+    int totalSent = 0;
+    int totalReceived = 0;
+    long sumSent = 0L;
+    long sumReceived = 0L;
+    for (int i = 0; i < registryEntries.size(); i++) {
+      RegistryEntry re = registryEntries.get(i);
+      result += String.format("Node %d\t\t%d\t\t\t%d\t\t\t\t%d\t%d\t\t\t%d\n", i, re.numSent, re.numReceived,
+          re.sentSummation, re.receiveSummation, re.numRelayed);
+
+      totalSent +=  re.numSent;
+      totalReceived += re.numReceived;
+      sumSent += re.sentSummation;
+      sumReceived += re.receiveSummation;
+    }
+    result += String.format("Sum\t\t%d\t\t\t%d\t\t\t\t%d\t%d\n", totalSent, totalReceived, sumSent,
+        sumReceived);
+    System.out.println(result);
+  }
+
+  public synchronized void handleTaskCompleteMessage()  throws IOException {
+    this.incrementTasksComplete();
+    if (allNodesFinished()) {
+      //System.out.println(">>>>> ALL NODES FINISHED ! <<<<<<");
+      try {
+        Thread.sleep(15000); // Sleep for 15 seconds to wait for all nodes to receive messages
+
+      } catch (InterruptedException e) {
+        System.err.printf("%s\n", e.getMessage());
+      }
+
+      PullTrafficSummary pullRequest = new PullTrafficSummary(REGISTRY_PORT, REGISTRY_HOSTNAME, REGISTRY_IP);
+      sendPullTrafficSummaryToAllNodes(pullRequest);
+    }
+  }
+
+  public void sendPullTrafficSummaryToAllNodes(PullTrafficSummary request) throws IOException {
+    for (RegistryEntry re: registryEntries) {
+      registryServer.sendData(request.getBytes(), re.socket);
+    }
+  }
+
+  public synchronized void incrementTasksComplete() {
+    this.tasksComplete++;
+  }
+
+  private synchronized boolean allNodesFinished() {
+    return this.tasksComplete == registryEntries.size();
+  }
+
+  public void startRounds(int numRoundsPerNode) throws IOException {
+    TaskInitiate taskInitiate = new TaskInitiate(REGISTRY_PORT, REGISTRY_HOSTNAME, REGISTRY_IP,
+        numRoundsPerNode);
+
+    for (int i = 0; i < registryEntries.size(); i++) {
+      this.registryServer.sendData(taskInitiate.getBytes(), registryEntries.get(i).socket);
+    }
+  }
+
   public void printOverlay(OverlayCreator overlayCreator) {
-    System.out.println(">> PRINTING OVERLAY <<\n");
+    System.out.println("\n>> OVERLAY <<\n");
     System.out.printf("Total number of nodes: %d\n", registryEntries.size());
     System.out.printf("Total number of links: %d\n", overlayCreator.edgesList.size());
     for (int i = 0; i < registryEntries.size(); i++) {
@@ -226,6 +302,22 @@ public class Registry implements Node {
       }
       System.out.println(entry);
     }
+  }
+
+  public void printMessagingNodes() {
+    System.out.println("\n>> MESSAGING NODES LIST <<\n");
+    System.out.printf("Total number of nodes: %d\n", registryEntries.size());
+    for (RegistryEntry re: registryEntries) {
+      System.out.printf("Host name: %s, port: %d\n", re.hostName, re.portNumber);
+    }
+  }
+
+  public void printWeights() throws IOException {
+    int totalNumLinks = this.overlayCreator.edgesList.size();
+    LinkWeights linkWeights = new LinkWeights(REGISTRY_PORT, REGISTRY_HOSTNAME, REGISTRY_IP,
+        totalNumLinks, this.registryEntries, this.overlayCreator.edgesList);
+    System.out.println("\n>> LINK LIST <<\n");
+    System.out.printf("%s\n", linkWeights);
   }
 
   @Override
@@ -239,7 +331,11 @@ public class Registry implements Node {
   public static void main(String[] args) throws IOException {
     // Create the registry from the port specified by command-line arg.
     // This also creates and starts running the TCPServerThread in the Registry instance.
+
     Registry registry = new Registry(Integer.parseInt(args[0]));
+
+    registry.registryServer.startConsumerThread();
+    registry.startServerThread();
 
     System.out.println(registry);
 
@@ -248,21 +344,40 @@ public class Registry implements Node {
     while (true) {
       String command = scan.next();
 
+      // Decided to use if-else instead of switch so I could use the "break" keyword to break
+      // out of the while-loop.
       if (command.toLowerCase().equals("exit")) break;
       if (command.toLowerCase().equals("setup-overlay")) {
         int numLinksPerNode = scan.nextInt();
         registry.createOverlay(numLinksPerNode);
       }
-      else if (command.toLowerCase().equals("send-link-weights")) {
+      else if (command.toLowerCase().equals("send-overlay-link-weights")) {
         registry.sendLinkWeights();
+      }
+      else if (command.toLowerCase().equals("list-messaging-nodes")) {
+        registry.printMessagingNodes();
+      }
+      else if (command.toLowerCase().equals("list-weights")) {
+        registry.printWeights();
+      }
+      else if (command.toLowerCase().equals("start")) {
+        int numRoundsPerNode = scan.nextInt();
+        registry.startRounds(numRoundsPerNode);
+      }
+      else if (command.toLowerCase().equals("print-overlay")) {
+        registry.printOverlay(registry.overlayCreator);
       }
       else {
         System.out.printf(
-            "Commands:\tDescriptions:\n"
-                + "exit\t\tExits the process.\n"
-                + "setup-overlay <int>\tCreates an overlay with n links per node.\n"
-                + "send-link-weights\tSends a message to all nodes with link weights.\n"
-                + "help\t\tShow usage message."
+            "\nCommands:\t\t\tDescriptions:\n\n"
+                + "exit\t\t\t\tExits the process.\n"
+                + "setup-overlay <int>\t\tCreates an overlay with n links per node.\n"
+                + "send-overlay-link-weights\tSends a message to all nodes with link weights.\n"
+                + "start <num rounds>\t\tSends a message to all nodes initiating the rounds.\n"
+                + "list-messaging-nodes\t\tLists the messaging nodes in the overlay.\n"
+                + "list-weights\t\t\tLists the weights of the links in the overlay.\n"
+                + "print-overlay\t\t\tPrints the overlay.\n"
+                + "help\t\t\t\tShow usage message.\n\n"
         );
       }
     }

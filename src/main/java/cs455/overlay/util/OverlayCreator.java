@@ -3,6 +3,7 @@ package main.java.cs455.overlay.util;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import main.java.cs455.overlay.node.RegistryEntry;
@@ -11,6 +12,8 @@ public class OverlayCreator {
 
   public List<RegistryEntry> nodeList;
   public List<GraphEdge> edgesList;
+
+
 
   // Default ctor for testing
   public OverlayCreator() {
@@ -56,12 +59,12 @@ public class OverlayCreator {
             for (int j = 2; j < (numEvens + 1) && j < nodeList.size() / 2; j++) {
               addGraphEdgeToEdgesList(i, (j + i) % nodeList.size());
             }
-          } else if (isOdd(linksPerNode)) { // k is odd
+          } else { // k is odd
             int numOdds = countOddNumbersBetweenOneAndK(linksPerNode);
             for (int j = 0; j < numOdds; j++) {
-              if (!nodeList.get(i).edges.contains(
-                  new GraphEdge(i, (nodeList.size()/2-j+i) % nodeList.size(), 0))
-                  ) {
+              int toIndex = ((nodeList.size()/2-j) + i) % nodeList.size();
+              GraphEdge check = new GraphEdge(i, ((nodeList.size()/2-j) + i) % nodeList.size(), 0);
+              if (!linkAlreadyExists(i, toIndex, check)) {
                 addGraphEdgeToEdgesList(i, ((nodeList.size()/2-j) + i) % nodeList.size());
               }
             }
@@ -73,6 +76,16 @@ public class OverlayCreator {
     this.addEdgesToRegistryEntries();
   }
 
+  public boolean linkAlreadyExists(int from, int to, GraphEdge check) {
+    //System.out.println("\n\n============= GOT HERE ==============\n\n");
+    for (GraphEdge ge: edgesList) {
+      if (ge.equals(check)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   public void addGraphEdgeToEdgesList(int from, int to) {
     GraphEdge ge = new GraphEdge(from, to, getRandomWeight());
     edgesList.add(ge);
@@ -80,7 +93,7 @@ public class OverlayCreator {
 
   public void addEdgesToRegistryEntries() {
     // Sort edges by weight
-    Collections.sort(edgesList);
+    Collections.sort(edgesList, new SortByWeight());
 
     // Add every edge to both "from" and "to" RegistryEntries edges list
     for (int i = 0; i < edgesList.size(); i++){

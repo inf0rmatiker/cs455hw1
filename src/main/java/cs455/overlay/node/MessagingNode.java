@@ -7,10 +7,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Scanner;
 import main.java.cs455.overlay.dijkstra.RoutingCache;
+import main.java.cs455.overlay.dijkstra.ShortestPath;
 import main.java.cs455.overlay.transport.TCPServerThread;
 import main.java.cs455.overlay.util.GraphEdge;
 import main.java.cs455.overlay.util.GraphNode;
+import main.java.cs455.overlay.util.SortByWeight;
 import main.java.cs455.overlay.wireformats.*;
+import java.util.Random;
 
 public class MessagingNode implements Node {
 
@@ -21,9 +24,18 @@ public class MessagingNode implements Node {
   public String messagingIpAddress;
   public TCPServerThread messagingServer;
   public boolean isRegistered = false;
-  RoutingCache rCache;
+  public RoutingCache rCache;
+  public ShortestPath dijkstra;
+  public int numRounds;
+  public long sendSummation;
+  public long receiveSummation;
+  private int sendTracker;
+  private int receiveTracker;
+  private int relayTracker;
+  private Socket registrySocket;
 
   public List<RegistryEntry> nodeList;
+  private List<Message> buffer;
 
   /**
    * Initializes the registry host and port specified from args.
@@ -39,8 +51,7 @@ public class MessagingNode implements Node {
     this.messagingPort = this.getMessagingPort();
     this.messagingIpAddress = this.getMessagingIpAddress();
     this.nodeList = new ArrayList<>();
-    this.startServerThread();
-    this.sendRegistrationRequest();
+    this.resetCounters(); // Sets all counters to zero
   }
 
   /**
@@ -96,8 +107,32 @@ public class MessagingNode implements Node {
         this.handleConnectionResponse((ConnectionResponse) event, socket); break;
       case LINK_WEIGHTS:
         this.handleLinkWeightsMessage((LinkWeights) event); break;
+      case TASK_INITIATE:
+        this.handleTaskInitiate((TaskInitiate) event); break;
+      case MESSAGE:
+        this.handleMessage((Message) event); break;
+      case PULL_TRAFFIC_SUMMARY:
+        this.handlePullTrafficSummary(); break;
       default: System.out.println("Unknown event type!");
     }
+  }
+
+  public void handlePullTrafficSummary() throws IOException {
+    TrafficSummary summary = new TrafficSummary(messagingPort, messagingHost, messagingIpAddress,
+        sendTracker, sendSummation, receiveTracker, receiveSummation, relayTracker);
+
+    messagingServer.sendData(summary.getBytes(), registrySocket);
+    System.out.println("Summation Received: " + receiveSummation);
+    System.out.println("Relay Tracker:: " + relayTracker);
+    resetCounters();
+  }
+
+  public void resetCounters() {
+    this.receiveTracker = 0;
+    this.sendTracker = 0;
+    this.relayTracker = 0;
+    this.sendSummation = 0;
+    this.receiveSummation = 0;
   }
 
   /**
@@ -106,22 +141,23 @@ public class MessagingNode implements Node {
    */
   public void connectToOtherMessagingNodes(MessagingNodesList nodeList) throws IOException {
     // Add all the nodes in the request list to our nodeList
-    System.out.printf(">> Received MessagingNodesList Request <<\n%s", nodeList);
-    for (RegistryEntry re: nodeList.nodeList) {
-      this.nodeList.add(re);
-    }
+    System.out.printf("\n\n>> Received MessagingNodesList Request <<\n%s", nodeList);
+    synchronized (this.nodeList) {
+      for (RegistryEntry re : nodeList.nodeList) {
+        if (!this.nodeList.contains(re)) {
 
-    for (int i = 0; i < this.nodeList.size(); i++) {
-      // Establish a socket by sending a message over
-      ConnectionRequest connectionRequest = new ConnectionRequest(this.messagingPort, this.messagingHost,
-          this.messagingIpAddress);
+          // Establish a socket by sending a message over
+          ConnectionRequest connectionRequest = new ConnectionRequest(this.messagingPort,
+              this.messagingHost,
+              this.messagingIpAddress);
 
+          re.socket = this.messagingServer.sendData(re.portNumber, re.hostName,
+              connectionRequest.getBytes());
 
-      // Establish a socket by sending a message over
-      // Save the socket that was created when sending data to the RegistryEntry's socket field
-      this.nodeList.get(i).socket = this.messagingServer.sendData(this.nodeList.get(i).portNumber,
-          this.nodeList.get(i).hostName, connectionRequest.getBytes());
-      this.messagingServer.listenForResponse(this.nodeList.get(i).socket);
+          this.nodeList.add(re);
+          this.messagingServer.listenForResponse(re.socket);
+        }
+      }
     }
   }
 
@@ -134,10 +170,13 @@ public class MessagingNode implements Node {
     RegistryEntry entry = new RegistryEntry(request.getPortNumber(), request.getHostName(),
         request.getIpAddress(), socket);
 
-    System.out.printf("Received connection from %s on port %d\n", entry.hostName, entry.portNumber);
+    synchronized (nodeList) {
+      nodeList.add(entry);
+    }
+
+    System.out.printf("\nReceived connection from %s on port %d\n", entry.hostName, entry.portNumber);
 
     this.sendConnectionResponse(entry.hostName, entry.portNumber, entry.socket);
-
   }
 
   public void sendConnectionResponse(String hostName, int portNumber, Socket socket)  throws IOException {
@@ -146,7 +185,6 @@ public class MessagingNode implements Node {
 
 
     this.messagingServer.sendData(response.getBytes(), socket);
-
   }
 
   public void handleConnectionResponse(ConnectionResponse response, Socket socket) throws IOException {
@@ -159,11 +197,11 @@ public class MessagingNode implements Node {
         this.messagingHost, this.messagingIpAddress);
 
     // Send registration request using TCPServerThread's Sender
-    this.messagingServer.sendData(this.REGISTRY_PORT,
+    this.registrySocket = this.messagingServer.sendData(this.REGISTRY_PORT,
         this.REGISTRY_HOST, registerRequest.getBytes());
 
     // messagingServer's currentSocket should now be connected to Registry's server
-    this.messagingServer.listenForResponse(this.messagingServer.currentSocket);
+    this.messagingServer.listenForResponse(this.registrySocket);
   }
 
   public void sendDeregistrationRequest() throws IOException {
@@ -172,10 +210,10 @@ public class MessagingNode implements Node {
         this.messagingHost, this.messagingIpAddress);
 
     // Send registration request using TCPServerThread's Sender
-    this.messagingServer.sendData(deregisterRequest.getBytes());
+    this.messagingServer.sendData(deregisterRequest.getBytes(), registrySocket);
 
     // messagingServer's currentSocket should now be connected to Registry's server
-    this.messagingServer.listenForResponse(this.messagingServer.currentSocket);
+    this.messagingServer.listenForResponse(this.registrySocket);
   }
 
   public void handleRegistrationResponse(RegistrationResponse response) {
@@ -189,11 +227,18 @@ public class MessagingNode implements Node {
   }
 
   public void handleLinkWeightsMessage(LinkWeights linkWeights) {
-    setupRoutingCache(linkWeights);
+    System.out.print("\n\n>> Received Link Weights Message <<\n");
+
+    RoutingCache rCache = setupRoutingCache(linkWeights);
+    ShortestPath dijkstra = calculateShortestPaths(rCache);
+
+    this.rCache = rCache;
+    this.dijkstra = dijkstra;
+    System.out.println("\nLink weights are received and processed. Ready to send messages\n");
   }
 
-  public void setupRoutingCache(LinkWeights linkWeights) {
-    rCache = new RoutingCache();
+  public RoutingCache setupRoutingCache(LinkWeights linkWeights) {
+    RoutingCache rCache = new RoutingCache();
 
     // Create all GraphNodes and add them to rCache.nodes
     for (String info: linkWeights.getLinksInformation()) {
@@ -204,7 +249,7 @@ public class MessagingNode implements Node {
       // Creates a key in the form: "hostnameA:portnumA" and adds it to nodes if it has not
       // been already added.
       String key = infoArray[0] + ":" + infoArray[1];
-      if (getNodeIndex(key) == -1)
+      if (getNodeIndex(key, rCache) == -1)
         rCache.nodes.add(new GraphNode(Integer.parseInt(infoArray[1]), infoArray[0], key));
     }
 
@@ -214,13 +259,13 @@ public class MessagingNode implements Node {
       String keyA = infoArray[0] + ":" + infoArray[1];
       String keyB = infoArray[2] + ":" + infoArray[3];
 
-      int from = getNodeIndex(keyA);
-      int to = getNodeIndex(keyB);
+      int from = getNodeIndex(keyA, rCache);
+      int to = getNodeIndex(keyB, rCache);
       rCache.edges.add(new GraphEdge(from, to, Integer.parseInt(infoArray[4])));
     }
 
     // Sort edges by weight
-    Collections.sort(rCache.edges);
+    Collections.sort(rCache.edges, new SortByWeight());
 
     // Add all edges to GraphNode edges lists
     for (GraphEdge ge: rCache.edges) {
@@ -228,16 +273,151 @@ public class MessagingNode implements Node {
       rCache.nodes.get(ge.to).edges.add(ge);
     }
 
-    System.out.println(rCache);
+    rCache.setStartingIndex(getNodeIndex(messagingHost + ":" + messagingPort, rCache));
+    //System.out.println(rCache);
+    return rCache;
   }
 
-  public int getNodeIndex(String key) {
+  public int getNodeIndex(String key, RoutingCache rCache) {
     for (int i = 0; i < rCache.nodes.size(); i++) {
       if (rCache.nodes.get(i).getKey().equals(key)) {
         return i;
       }
     }
     return -1;
+  }
+
+  public ShortestPath calculateShortestPaths(RoutingCache rCache) {
+    ShortestPath dijkstra = new ShortestPath(rCache);
+    dijkstra.calculateShortestPaths();
+    dijkstra.convertResultsToPaths();
+
+    return dijkstra;
+  }
+
+  /**
+   * Handles a TaskInitiate message from the Registry's "start" command.
+   * @param taskInitiate The TaskInitiate message containing the number of rounds to send.
+   */
+  public void handleTaskInitiate(TaskInitiate taskInitiate) throws IOException {
+    System.out.printf("\n>> Received Task Initiate Message for %d rounds per Node\n",
+        taskInitiate.numRoundsPerNode);
+
+    this.numRounds = taskInitiate.numRoundsPerNode;
+    this.sendRounds();
+  }
+
+  /**
+   * Sends numRounds messages to random other nodes.
+   * @throws IOException
+   */
+  public void sendRounds() throws IOException {
+    int indexInRoutingCache = rCache.getStartingIndex();
+    int messagesSent = 0;
+    Random generator = new Random();
+
+    while (this.getSendTracker() < this.numRounds * 5) {
+      int randomIndex = generator.nextInt(rCache.nodes.size());
+      if (randomIndex != indexInRoutingCache) { // Don't send a message to yourself!
+        int randomPayload = generator.nextInt();
+        String destinationKey = rCache.nodes.get(randomIndex).getKey();
+        Message message = new Message(messagingPort, messagingHost, messagingIpAddress,
+            randomPayload, destinationKey);
+
+        GraphNode nextNode = rCache.shortestPaths.get(destinationKey).get(1);
+        Socket nextNodeSocket = getNextNodeSocket(nextNode);
+        if (nextNodeSocket == null) {
+          System.err.println("Could not find a valid socket!");
+        }
+        else {
+          this.addToSendSummation(randomPayload); // Synchronized
+          messagingServer.sendData(message.getBytes(), nextNodeSocket);
+        }
+        this.incrementSendTracker();
+      }
+    }
+
+    // We are finished sending rounds, send a TaskComplete message to Registry
+    this.sendTaskCompleteMessage();
+  }
+
+  public void sendTaskCompleteMessage() throws IOException {
+    TaskComplete taskCompleteMessage = new TaskComplete(messagingPort, messagingHost, messagingIpAddress);
+    messagingServer.sendData(taskCompleteMessage.getBytes(), this.registrySocket);
+  }
+
+  private void incrementSendTracker() {
+    this.sendTracker++;
+  }
+
+  public int getSendTracker() {
+    return this.sendTracker;
+  }
+
+  private synchronized void incrementReceiveTracker() {
+    this.receiveTracker++;
+  }
+
+  public synchronized int getReceiveTracker() {
+    return this.receiveTracker;
+  }
+
+  private synchronized void incrementRelayTracker() {
+    this.relayTracker++;
+  }
+
+  public synchronized int getRelayTracker() {
+    return this.relayTracker;
+  }
+
+  private synchronized void addToSendSummation(int value) {
+    this.sendSummation += value;
+  }
+
+  private synchronized void addToReceiveSummation(int value) {
+    this.receiveSummation += value;
+  }
+
+  public synchronized long getSendSummation() {
+    return this.sendSummation;
+  }
+
+  public synchronized long getReceiveSummation() {
+    return this.receiveSummation;
+  }
+
+  public Socket getNextNodeSocket(GraphNode nextNode) {
+    for (RegistryEntry re: nodeList) {
+      if (re.getKey().equals(nextNode.getKey())) {
+        return re.socket;
+      }
+    }
+    return null;
+  }
+
+  public void handleMessage(Message message) throws IOException {
+    // TODO: NOT THE FINAL DESTINATION (PROBABLY)
+    // If the message was not intended for us, send it on
+    if (!(message.destination.equals(getKey()))) {
+      GraphNode nextNode = rCache.shortestPaths.get(message.destination).get(1);
+      Socket nextNodeSocket = getNextNodeSocket(nextNode);
+      if (nextNodeSocket == null) {
+        System.err.println("Could not find a valid socket!");
+      }
+      else {
+        messagingServer.sendData(message.getBytes(), nextNodeSocket);
+        this.incrementRelayTracker(); // Synchronized
+      }
+    }
+    else { // The message was intended for us
+      //System.out.printf("Payload %d\n", message.payload);
+      this.addToReceiveSummation(message.payload); // Synchronized
+      this.incrementReceiveTracker(); // Synchronized
+    }
+  }
+
+  private String getKey() {
+    return messagingHost + ":" + messagingPort;
   }
 
   /**
@@ -277,18 +457,34 @@ public class MessagingNode implements Node {
 
   public static void main(String[] args) throws IOException {
     MessagingNode messagingNode = new MessagingNode(args[0], Integer.parseInt(args[1]));
-
+    messagingNode.startServerThread();
+    messagingNode.messagingServer.startConsumerThread();
+    messagingNode.sendRegistrationRequest();
 
     System.out.println(messagingNode);
-
-
     Scanner reader = new Scanner(System.in);  // Reading user input
-    String command = reader.next(); // Scans the next token of the input as an int.
+
+    while (true) {
+      String command = reader.next(); // Scans the next token of the input as an int.
+      if (command.toLowerCase().equals("exit")) {
+        messagingNode.sendDeregistrationRequest();
+        System.exit(0);
+      }
+      else if (command.toLowerCase().equals("print-shortest-path")) {
+        messagingNode.dijkstra.printShortestPaths();
+      }
+      else if (command.toLowerCase().equals("print-receive-tracker")) {
+        System.out.println("Receive tracker: " + messagingNode.getReceiveTracker());
+      }
+      else if (command.toLowerCase().equals("print-relay-tracker")) {
+        System.out.println("Relay tracker: " + messagingNode.getRelayTracker());
+      }
+      else break;
+    }
+
+
     reader.close();
 
-    if (command.toLowerCase().equals("exit")) {
-      messagingNode.sendDeregistrationRequest();
-      System.exit(0);
-    }
+
   }
 }

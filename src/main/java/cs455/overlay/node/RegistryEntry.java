@@ -2,6 +2,7 @@ package main.java.cs455.overlay.node;
 
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import main.java.cs455.overlay.util.GraphEdge;
 
@@ -11,6 +12,12 @@ public class RegistryEntry {
   public String hostName;
   public String ipAddress;
   public Socket socket;
+
+  public int numSent;
+  public int numReceived;
+  public int numRelayed;
+  public long sentSummation;
+  public long receiveSummation;
 
   public List<GraphEdge> edges;
 
@@ -31,6 +38,10 @@ public class RegistryEntry {
     return result;
   }
 
+  public String getKey() {
+    return hostName + ":" + portNumber;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
@@ -43,8 +54,9 @@ public class RegistryEntry {
 
   @Override
   public String toString() {
-    return String.format("Node registered on %s at port number: %d",
-        this.hostName, this.portNumber);
+    String socketStatus = (socket == null) ? "IS" : "IS NOT";
+    return String.format("Node registered on %s at port number: %d, socket %s null",
+        this.hostName, this.portNumber, socketStatus);
   }
 
 }
